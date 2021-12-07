@@ -7,7 +7,12 @@ token_path = os.path.expanduser("~/.youtrack-token")
 if not os.path.exists(token_path):
     print("Please follow the instructions at https://www.jetbrains.com/help/youtrack/devportal/authentication-with-permanent-token.html to obtain a YouTrack permanent token")
     print("and save the token to the .youtrack_token file in your home directory.")
-    sys.exit(0)
+    sys.exit(1)
+
+if len(sys.argv) < 2:
+    print("Usage: python3 youtrack-vote-distribution.py <issue ID>")
+    sys.exit(1)
+issue_id = sys.argv[1]
 
 token = open(token_path).readline().strip()
 headers = {
@@ -44,4 +49,4 @@ def distribution_per_year(votes):
         distro[date.year] += 1
     return list(distro.items())
 
-print(distribution_per_year(collect_vote_timestamps_recursive('IDEA-171510')))
+print(distribution_per_year(collect_vote_timestamps_recursive(issue_id)))
