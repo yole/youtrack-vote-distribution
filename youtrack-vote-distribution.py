@@ -1,4 +1,4 @@
-import requests, os, sys, collections
+import requests, os, sys, collections, time
 from datetime import datetime
 
 YOUTRACK_API = 'https://youtrack.jetbrains.com/api'
@@ -12,7 +12,6 @@ if not os.path.exists(token_path):
 if len(sys.argv) < 2:
     print("Usage: python3 youtrack-vote-distribution.py <issue ID>")
     sys.exit(1)
-issue_id = sys.argv[1]
 
 token = open(token_path).readline().strip()
 headers = {
@@ -28,7 +27,7 @@ def collect_vote_timestamps(issue_id):
         if vote['added']:
             vote_timestamps[voter] = datetime.fromtimestamp(vote['timestamp'] // 1000)
         else:
-            del vote_timestamps[voter]
+            if voter in vote_timestamps: del vote_timestamps[voter]
     return vote_timestamps
 
 def collect_vote_timestamps_recursive(issue_id):
@@ -49,4 +48,46 @@ def distribution_per_year(votes):
         distro[date.year] += 1
     return list(distro.items())
 
-print(distribution_per_year(collect_vote_timestamps_recursive(issue_id)))
+def extract_custom_field(issue, name):
+    for f in issue['customFields']:
+        if f['projectCustomField']['field']['name'] == name:
+            value = f['value']
+            return value['name'] if value else 'Unspecified'
+
+def query_issues(query):
+    result = []
+    issues = requests.get(f'{YOUTRACK_API}/issues?fields=idReadable,summary,votes,customFields(projectCustomField(field(name)),value(name))&$top=20&query={query} order by:votes', headers=headers).json()
+    for issue in issues:
+        issue_id = issue['idReadable']
+        subsystem = extract_custom_field(issue, 'Subsystem')
+        result.append((issue_id, issue['summary'], issue['votes'], subsystem))
+    return result
+
+def top_voted_issues_per_subsystem(issues):
+    this_year = datetime.now().year
+    top_per_subsystem = {}
+    for issue_id, summary, votes, subsystem in issues:
+        vote_distribution = distribution_per_year(collect_vote_timestamps_recursive(issue_id))
+        votes_this_year = 0
+        for year, votes in vote_distribution:
+            if year == this_year: votes_this_year = votes
+        if not votes_this_year: continue        
+
+        if subsystem not in top_per_subsystem:
+            top_per_subsystem[subsystem] = []
+        top_per_subsystem[subsystem].append((issue_id, summary, votes_this_year))
+    for list in top_per_subsystem.values():
+        list.sort(key=lambda i: -i[2])
+    return top_per_subsystem
+
+issue_id = sys.argv[1]
+if issue_id == 'report':
+    issues = query_issues(' '.join(sys.argv[2:]))
+    top_per_subsystem = top_voted_issues_per_subsystem(issues)
+    for subsystem, issues in top_per_subsystem.items():
+        print(f"Subsystem: {subsystem}")
+        for issue_id, summary, votes in issues:
+            print(f"{issue_id} {summary}: {votes}")
+        print("")
+else:
+    print(distribution_per_year(collect_vote_timestamps_recursive(issue_id)))
