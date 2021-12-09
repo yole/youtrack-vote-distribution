@@ -1,7 +1,5 @@
-import requests, os, sys, collections, time
+import requests, os, sys, collections, time, urllib.parse
 from datetime import datetime
-
-YOUTRACK_API = 'https://youtrack.jetbrains.com/api'
 
 token_path = os.path.expanduser("~/.youtrack-token")
 if not os.path.exists(token_path):
@@ -9,9 +7,13 @@ if not os.path.exists(token_path):
     print("and save the token to the .youtrack_token file in your home directory.")
     sys.exit(1)
 
-if len(sys.argv) < 2:
-    print("Usage: python3 youtrack-vote-distribution.py <issue ID>")
+if len(sys.argv) < 3:
+    print("Usage:")
+    print("  Vote distribution by time: python3 youtrack-vote-distribution.py <server> [month] <issue ID>")
+    print("  Recently top voted issues: python3 youtrack-vote-distribution.py <server> report <output file> <query>")
     sys.exit(1)
+
+YOUTRACK_API = sys.argv[1] + '/api'
 
 token = open(token_path).readline().strip()
 headers = {
@@ -42,10 +44,11 @@ def collect_vote_timestamps_recursive(issue_id):
                 result.update(collect_vote_timestamps(duplicate_id))
     return result
 
-def distribution_per_year(votes):
+def distribution_per_year(votes, include_month = False):
     distro = collections.Counter()
     for voter, date in votes.items():
-        distro[date.year] += 1
+        key = f'{date.year}.{date.month}' if include_month else date.year
+        distro[key] += 1
     return list(distro.items())
 
 def extract_custom_field(issue, name):
@@ -56,7 +59,7 @@ def extract_custom_field(issue, name):
 
 def query_issues(query):
     result = []
-    issues = requests.get(f'{YOUTRACK_API}/issues?fields=idReadable,summary,votes,customFields(projectCustomField(field(name)),value(name))&$top=20&query={query} order by:votes', headers=headers).json()
+    issues = requests.get(f'{YOUTRACK_API}/issues?fields=idReadable,summary,votes,customFields(projectCustomField(field(name)),value(name))&$top=500&query={query} order by:votes', headers=headers).json()
     for issue in issues:
         issue_id = issue['idReadable']
         subsystem = extract_custom_field(issue, 'Subsystem')
@@ -71,7 +74,8 @@ def top_voted_issues_per_subsystem(issues):
         votes_this_year = 0
         for year, votes in vote_distribution:
             if year == this_year: votes_this_year = votes
-        if not votes_this_year: continue        
+        if not votes_this_year: continue
+        print(f'{issue_id} {summary}: {votes_this_year}')
 
         if subsystem not in top_per_subsystem:
             top_per_subsystem[subsystem] = []
@@ -80,14 +84,24 @@ def top_voted_issues_per_subsystem(issues):
         list.sort(key=lambda i: -i[2])
     return top_per_subsystem
 
-issue_id = sys.argv[1]
+issue_id = sys.argv[2]
 if issue_id == 'report':
-    issues = query_issues(' '.join(sys.argv[2:]))
+    report_file = open(sys.argv[3], "w")
+    issues = query_issues(' '.join([urllib.parse.quote_plus(arg) for arg in sys.argv[4:]]))
     top_per_subsystem = top_voted_issues_per_subsystem(issues)
-    for subsystem, issues in top_per_subsystem.items():
-        print(f"Subsystem: {subsystem}")
+    subsystems = list(top_per_subsystem.keys())
+    subsystems.sort()
+    for subsystem in subsystems:
+        issues = top_per_subsystem[subsystem]
+        print(f"## Subsystem: {subsystem}", file=report_file)
+        print("| Issue | Votes |", file=report_file)
+        print("| --- | --- |", file=report_file)
         for issue_id, summary, votes in issues:
-            print(f"{issue_id} {summary}: {votes}")
-        print("")
+            print(f"| {issue_id} | {votes} |", file=report_file)
+        print("", file=report_file)
 else:
-    print(distribution_per_year(collect_vote_timestamps_recursive(issue_id)))
+    include_month = False
+    if issue_id == 'month':
+        issue_id = sys.argv[3]
+        include_month = True
+    print(distribution_per_year(collect_vote_timestamps_recursive(issue_id), include_month))
