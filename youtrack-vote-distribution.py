@@ -25,7 +25,7 @@ def youtrack_request(request):
     while True:
         try:
             return requests.get(YOUTRACK_API + request, headers=headers).json()
-        except requests.exception.ConnectionError as e:
+        except requests.exceptions.ConnectionError as e:
             print(e)
             time.sleep(10)
 
