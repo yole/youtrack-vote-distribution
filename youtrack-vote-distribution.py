@@ -21,9 +21,17 @@ headers = {
     'Accept': 'application/json'
 }
 
+def youtrack_request(request):
+    while True:
+        try:
+            return requests.get(YOUTRACK_API + request, headers=headers).json()
+        except requests.exception.ConnectionError as e:
+            print(e)
+            time.sleep(10)
+
 def collect_vote_timestamps(issue_id):
     vote_timestamps = {}
-    r = requests.get(f'{YOUTRACK_API}/issues/{issue_id}/activities?fields=timestamp,author(login),added,removed,category&categories=VotersCategory', headers=headers).json()
+    r = youtrack_request(f'/issues/{issue_id}/activities?fields=timestamp,author(login),added,removed,category&categories=VotersCategory')
     for vote in r:
         voter = vote['author']['login']
         if vote['added']:
@@ -34,12 +42,12 @@ def collect_vote_timestamps(issue_id):
 
 def collect_vote_timestamps_recursive(issue_id):
     result = collect_vote_timestamps(issue_id)
-    link_types = requests.get(f'{YOUTRACK_API}/issues/{issue_id}/links?fields=linkType(name),issues(idReadable)', headers=headers).json()
+    link_types = youtrack_request(f'/issues/{issue_id}/links?fields=linkType(name),issues(idReadable)')
     for link_type in link_types:
         if link_type['linkType']['name'] == 'Duplicate':
             for issue in link_type['issues']:
                 duplicate_id = issue['idReadable']
-                issue_details = requests.get(f'{YOUTRACK_API}/issues/{duplicate_id}?fields=reporter(login),created', headers=headers).json()
+                issue_details = youtrack_request(f'/issues/{duplicate_id}?fields=reporter(login),created')
                 result[issue_details['reporter']['login']] = datetime.fromtimestamp(issue_details['created'] // 1000)
                 result.update(collect_vote_timestamps(duplicate_id))
     return result
@@ -59,7 +67,7 @@ def extract_custom_field(issue, name):
 
 def query_issues(query):
     result = []
-    issues = requests.get(f'{YOUTRACK_API}/issues?fields=idReadable,summary,votes,customFields(projectCustomField(field(name)),value(name))&$top=500&query={query} order by:votes', headers=headers).json()
+    issues = youtrack_request(f'/issues?fields=idReadable,summary,votes,customFields(projectCustomField(field(name)),value(name))&$top=500&query={query} order by:votes')
     for issue in issues:
         issue_id = issue['idReadable']
         subsystem = extract_custom_field(issue, 'Subsystem')
