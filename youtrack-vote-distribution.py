@@ -17,13 +17,14 @@ YOUTRACK_API = sys.argv[1] + '/api'
 
 token = open(token_path).readline().strip()
 headers = {
-    'Authorization': 'Bearer perm:' + token,
+    'Authorization': 'Bearer ' + token,
     'Accept': 'application/json'
 }
 
 def youtrack_request(request):
     while True:
         try:
+            time.sleep(2)
             return requests.get(YOUTRACK_API + request, headers=headers).json()
         except requests.exceptions.ConnectionError as e:
             print(e)
