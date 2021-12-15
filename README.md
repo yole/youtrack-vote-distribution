@@ -9,3 +9,7 @@ Usage:
 * Run `python3 youtrack-vote-distribution.py <server> [month] <issue-ID>` to get vote distribution by time for a single issue.
 * Run `python3 youtrack-vote-distribution.py <server> report <report-file> <query>` to build a report of recently most voted issues.
 
+Example:
+```
+python3 youtrack-vote-distribution.py https://youtrack-jetbrains.com report top-bugs.md "project:IDEA #Bug #Unresolved -shelved"
+```
